@@ -1,7 +1,10 @@
 #include <Arduino.h>
 #include "display.cpp"
+#include "network.cpp"
 
 display _myDisplay = display();
+network _myNetwork = network();
+
 const int arraySize = 60;
 
 void setup() {
@@ -11,6 +14,8 @@ void setup() {
     randomSeed(analogRead(3));
 
     _myDisplay.Init();
+
+    _myNetwork.Init();
 }
 
 void loop() {
