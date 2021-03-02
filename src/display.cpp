@@ -51,7 +51,6 @@ class display
                 _u8g2.setCursor(0, 64 - (8 + 10)); _u8g2.print(1);
                 _u8g2.setCursor(0, 64 - (8 + 20)); _u8g2.print(2);
                 _u8g2.setCursor(0, 64 - (8 + 30)); _u8g2.print(3);
-                _u8g2.setCursor(0, 64 - (8 + 40)); _u8g2.print(4);
                 
                 // draw time values on X-axis (bottom) //elke 3uur = 12kwartier = 24px
                 _u8g2.setCursor(8, 64); _u8g2.print(6);
@@ -59,7 +58,6 @@ class display
                 _u8g2.setCursor(8 + 48, 64); _u8g2.print(12);
                 _u8g2.setCursor(8 + 72, 64); _u8g2.print(15);
                 _u8g2.setCursor(8 + 96, 64); _u8g2.print(18);
-                _u8g2.setCursor(8 + 120 - 16, 64); _u8g2.print(21);
 
                 // draw X and Y axis;
                 _u8g2.drawLine(marginLeft, marginTop, marginLeft, marginTop + height);
