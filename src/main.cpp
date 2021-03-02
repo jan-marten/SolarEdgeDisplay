@@ -1,3 +1,4 @@
+#include "settings.h"
 #include <Arduino.h>
 #include "display.cpp"
 #include "network.cpp"
@@ -16,6 +17,10 @@ void setup() {
     _myDisplay.Init();
 
     _myNetwork.Init();
+    //_myNetwork.GetData();
+    _myNetwork.GetDataPeriod();
+    _myNetwork.GetDataEnergy();
+    _myNetwork.GetDataPower();
 }
 
 void loop() {

@@ -1,85 +1,172 @@
-#ifndef WIFI_SSID
-#define WIFI_SSID "Development"
-#endif
-
-#ifndef WIFI_PWD
-#define WIFI_PWD "EnterPasswordHere1234"
-#endif
-
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WiFiMulti.h>
+#include <HTTPClient.h>
 #include <WiFiClientSecure.h>
-
+#include "settings.h"
 
 class network {
     private:
-        WiFiClientSecure client;
-        const IPAddress server = IPAddress(88,214,28,7);  // Server IP address Regeling.com
-        const int    port = 80; // server's port (8883 for MQTT)
+        WiFiMulti _WiFiMulti;
 
-        const char*  pskIdent = "Client_identity"; // PSK identity (sometimes called key hint)
-        const char*  psKey = "1a2b3c4d"; // PSK Key (must be hex string without 0x)
-
+        // SolarEdge uses the DigiCert Global Root CA
+        // This is the BASE64-exported X.509 version
+        const char* DigiCertRootCertificate = \
+            "-----BEGIN CERTIFICATE-----\n"\
+            "MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh\n"\
+            "MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3\n"\
+            "d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBD\n"\
+            "QTAeFw0wNjExMTAwMDAwMDBaFw0zMTExMTAwMDAwMDBaMGExCzAJBgNVBAYTAlVT\n"\
+            "MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j\n"\
+            "b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IENBMIIBIjANBgkqhkiG\n"\
+            "9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4jvhEXLeqKTTo1eqUKKPC3eQyaKl7hLOllsB\n"\
+            "CSDMAZOnTjC3U/dDxGkAV53ijSLdhwZAAIEJzs4bg7/fzTtxRuLWZscFs3YnFo97\n"\
+            "nh6Vfe63SKMI2tavegw5BmV/Sl0fvBf4q77uKNd0f3p4mVmFaG5cIzJLv07A6Fpt\n"\
+            "43C/dxC//AH2hdmoRBBYMql1GNXRor5H4idq9Joz+EkIYIvUX7Q6hL+hqkpMfT7P\n"\
+            "T19sdl6gSzeRntwi5m3OFBqOasv+zbMUZBfHWymeMr/y7vrTC0LUq7dBMtoM1O/4\n"\
+            "gdW7jVg/tRvoSSiicNoxBN33shbyTApOB6jtSj1etX+jkMOvJwIDAQABo2MwYTAO\n"\
+            "BgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUA95QNVbR\n"\
+            "TLtm8KPiGxvDl7I90VUwHwYDVR0jBBgwFoAUA95QNVbRTLtm8KPiGxvDl7I90VUw\n"\
+            "DQYJKoZIhvcNAQEFBQADggEBAMucN6pIExIK+t1EnE9SsPTfrgT1eXkIoyQY/Esr\n"\
+            "hMAtudXH/vTBH1jLuG2cenTnmCmrEbXjcKChzUyImZOMkXDiqw8cvpOp/2PV5Adg\n"\
+            "06O/nVsJ8dWO41P0jmP6P6fbtGbfYmbW0W5BjfIttep3Sp+dWOIrWcBAI+0tKIJF\n"\
+            "PnlUkiaY4IBIqDfv8NZ5YBberOgOzW6sRBc4L0na4UU+Krk2U886UAb3LujEV0ls\n"\
+            "YSEY1QSteDwsOoBrp+uvFRTp2InBuThs4pFsiv9kuXclVzDAGySj4dzp30d8tbQk\n"\
+            "CAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=\n"\
+            "-----END CERTIFICATE-----\n";
     public:
+
+        // Not sure if WiFiClientSecure checks the validity date of the certificate. 
+        // Setting clock just to be sure...
+        void setClock() {
+            configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+            Serial.print(F("Waiting for NTP time sync: "));
+            time_t nowSecs = time(nullptr);
+            while (nowSecs < 8 * 3600 * 2) {
+                delay(500);
+                Serial.print(F("."));
+                yield();
+                nowSecs = time(nullptr);
+            }
+
+            Serial.println();
+            struct tm timeinfo;
+            gmtime_r(&nowSecs, &timeinfo);
+            Serial.print(F("Current time: "));
+            Serial.print(asctime(&timeinfo));
+        }
+
         void Init(void)
         {
             Serial.print("Attempting to connect to SSID: ");
             Serial.println(WIFI_SSID);
-            WiFi.begin(WIFI_SSID, WIFI_PWD);
+            WiFi.mode(WIFI_STA);
+            _WiFiMulti.addAP(WIFI_SSID, WIFI_PWD);
 
             // attempt to connect to Wifi network:
-            while (WiFi.status() != WL_CONNECTED) 
+            while ((_WiFiMulti.run() != WL_CONNECTED)) 
             {
                 Serial.print(".");
                 // wait 1 second for re-trying
-                delay(1000);
+                delay(50);
             }
 
-            Serial.print("Connected to ");
+            Serial.print("\nConnected to ");
             Serial.println(WIFI_SSID);
             Serial.println("IP address: ");
-            Serial.println(WiFi.localIP());            
+            Serial.println(WiFi.localIP()); 
 
-            client.setPreSharedKey(pskIdent, psKey);
-
-            Serial.println("\nStarting connection to server...");
-            
-            // TODO - get some data and handle TLS correctly;
-            // - [E][ssl_client.cpp:33] _handle_error(): [start_ssl_client():199]: (-29184) SSL - An invalid SSL record was received
-            // - [E][WiFiClientSecure.cpp:152] connect(): start_ssl_client: -29184
-            // - Connection failed!
-
-            if (!client.connect(server, port))
+            setClock();  
+        };
+       
+        String GetData(String url)
+        {
+            String result = "";
+            WiFiClientSecure *client = new WiFiClientSecure;
+            if (client) 
             {
-                Serial.println("Connection failed!");
-            }
-            else
-            {
-                Serial.println("Connected to server!");
-                // Make a HTTP request:
-                client.println("GET / HTTP/1.0");
-                client.print("Host: ");
-                //client.println(server);
-                client.println("Connection: close");
-                client.println();
-
-                while (client.connected()) 
+                client->setCACert(DigiCertRootCertificate);
                 {
-                    String line = client.readStringUntil('\n');
-                    if (line == "\r") 
+                    // Add a scoping block for HTTPClient https to make sure it is destroyed before WiFiClientSecure *client is 
+                    HTTPClient https;
+
+                    Serial.print("[HTTPS] begin...\n");
+                    Serial.println(url);
+                    if (https.begin(*client, url))
+                    {  // HTTPS
+                        Serial.print("[HTTPS] GET...\n");
+                        // start connection and send HTTP header
+                        int httpCode = https.GET();
+
+                        // httpCode will be negative on error
+                        if (httpCode > 0)
+                        {
+                            // HTTP header has been send and Server response header has been handled
+                            Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+
+                            // file found at server
+                            if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
+                            {
+                                result = https.getString();
+                                Serial.println(result);
+                            }
+                        }
+                        else
+                        {
+                            Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+                        }
+                        https.end();
+                    }
+                    else
                     {
-                        Serial.println("headers received");
-                        break;
+                        Serial.printf("[HTTPS] Unable to connect\n");
                     }
                 }
 
-                // if there are incoming bytes available
-                // from the server, read them and print them:
-                while (client.available()) {
-                    char c = client.read();
-                    Serial.write(c);
-                }
+                delete client;
             }
+            else
+            {
+                Serial.println("Unable to create client");
+            }
+            return result;
+        }
 
-            client.stop();
-            Serial.println("client stopped. End of wifi demo.");
-        };
+        void GetDataPeriod(void)
+        {
+            String url = "https://monitoringapi.solaredge.com/site/";
+            url.concat(SOLAREDGE_SITEID);
+            url.concat("/dataPeriod?api_key=");
+            url.concat(SOLAREDGE_APIKEY);
+            String result = GetData(url);
+        }
+
+        void GetDataEnergy(void)
+        {
+            // https://monitoringapi.solaredge.com/site/{{SITE_ID}}/energy?timeUnit=DAY&endDate={{STATS_CURRENTDAY}}&startDate={{STATS_CURRENTDAY}}&api_key={{API_KEY}}
+            String url = "https://monitoringapi.solaredge.com/site/";
+            url.concat(SOLAREDGE_SITEID);
+            url.concat("/energy?timeUnit=DAY&endDate=");
+            url.concat("2021-03-02");
+            url.concat("&startDate=");
+            url.concat("2021-03-02");
+            url.concat("&api_key=");
+            url.concat(SOLAREDGE_APIKEY);
+            String result = GetData(url);
+        }
+
+        void GetDataPower(void)
+        {
+            // https://monitoringapi.solaredge.com/site/{{SITE_ID}}/power?startTime={{STATS_CURRENTDAY}} 05:00:00&endTime={{STATS_CURRENTDAY}} 21:00:00&api_key={{API_KEY}}
+            String url = "https://monitoringapi.solaredge.com/site/";
+            url.concat(SOLAREDGE_SITEID);
+            url.concat("/power?startTime=");
+            url.concat("2021-03-02");
+            url.concat("%2005:00:00&endTime=");
+            url.concat("2021-03-02");
+            url.concat("%2021:00:00&api_key=");
+            url.concat(SOLAREDGE_APIKEY);
+            String result = GetData(url);        
+        }
 };
