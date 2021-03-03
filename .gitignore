@@ -4,3 +4,4 @@
 .vscode/launch.json
 .vscode/ipch
 src/settings.h
+documentation/se_monitoring_api.pdf
