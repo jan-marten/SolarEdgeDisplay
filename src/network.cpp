@@ -4,10 +4,19 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include "settings.h"
+#include <ArduinoJson.h>
+
+struct SolarEdgeOverview
+{
+    unsigned long RequestTime;
+    unsigned int LastDayDataEnergy;
+    unsigned int CurrentPower;
+};
 
 class network {
     private:
         WiFiMulti _WiFiMulti;
+        SolarEdgeOverview _solarEdgeOverview;
 
         // SolarEdge uses the DigiCert Global Root CA
         // This is the BASE64-exported X.509 version
@@ -34,12 +43,11 @@ class network {
             "YSEY1QSteDwsOoBrp+uvFRTp2InBuThs4pFsiv9kuXclVzDAGySj4dzp30d8tbQk\n"\
             "CAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=\n"\
             "-----END CERTIFICATE-----\n";
-    public:
 
         // Not sure if WiFiClientSecure checks the validity date of the certificate. 
         // Setting clock just to be sure...
-        void setClock() {
-            configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+        void SetClock() {
+            configTime(TIMEZONE_OFFSET, 0, "pool.ntp.org", "time.nist.gov");
 
             Serial.print(F("Waiting for NTP time sync: "));
             time_t nowSecs = time(nullptr);
@@ -57,29 +65,6 @@ class network {
             Serial.print(asctime(&timeinfo));
         }
 
-        void Init(void)
-        {
-            Serial.print("Attempting to connect to SSID: ");
-            Serial.println(WIFI_SSID);
-            WiFi.mode(WIFI_STA);
-            _WiFiMulti.addAP(WIFI_SSID, WIFI_PWD);
-
-            // attempt to connect to Wifi network:
-            while ((_WiFiMulti.run() != WL_CONNECTED)) 
-            {
-                Serial.print(".");
-                // wait 1 second for re-trying
-                delay(50);
-            }
-
-            Serial.print("\nConnected to ");
-            Serial.println(WIFI_SSID);
-            Serial.println("IP address: ");
-            Serial.println(WiFi.localIP()); 
-
-            setClock();  
-        };
-       
         String GetData(String url)
         {
             String result = "";
@@ -133,27 +118,80 @@ class network {
             return result;
         }
 
-        void GetDataPeriod(void)
-        {
-            String url = "https://monitoringapi.solaredge.com/site/";
-            url.concat(SOLAREDGE_SITEID);
-            url.concat("/dataPeriod?api_key=");
-            url.concat(SOLAREDGE_APIKEY);
-            String result = GetData(url);
-        }
+    public:
 
-        void GetDataEnergy(void)
+        void Init(void)
         {
-            // https://monitoringapi.solaredge.com/site/{{SITE_ID}}/energy?timeUnit=DAY&endDate={{STATS_CURRENTDAY}}&startDate={{STATS_CURRENTDAY}}&api_key={{API_KEY}}
+            Serial.print("Attempting to connect to SSID: ");
+            Serial.println(WIFI_SSID);
+            WiFi.mode(WIFI_STA);
+            _WiFiMulti.addAP(WIFI_SSID, WIFI_PWD);
+
+            // attempt to connect to Wifi network:
+            while ((_WiFiMulti.run() != WL_CONNECTED)) 
+            {
+                Serial.print(".");
+                // wait 1 second for re-trying
+                delay(50);
+            }
+
+            Serial.print("\nConnected to ");
+            Serial.println(WIFI_SSID);
+            Serial.println("IP address: ");
+            Serial.println(WiFi.localIP()); 
+
+            SetClock();  
+
+            _solarEdgeOverview.RequestTime = 0;
+            _solarEdgeOverview.CurrentPower = 0;
+            _solarEdgeOverview.LastDayDataEnergy = 0;
+        };
+
+        SolarEdgeOverview GetDataOverview(void)
+        {
+            //https://monitoringapi.solaredge.com/site/{{SITE_ID}}/overview?api_key={{API_KEY}}
+            // {
+            //     "overview": {
+            //         "lastUpdateTime": "2021-03-03 19:44:54",
+            //         "lifeTimeData": {
+            //             "energy": 2105148.0,
+            //             "revenue": 435.4053
+            //         },
+            //         "lastYearData": {
+            //             "energy": 359081.0
+            //         },
+            //         "lastMonthData": {
+            //             "energy": 30520.0
+            //         },
+            //         "lastDayData": {
+            //             "energy": 2380.0
+            //         },
+            //         "currentPower": {
+            //             "power": 0.0
+            //         },
+            //         "measuredBy": "INVERTER"
+            //     }
+            // }
+
+            if (_solarEdgeOverview.RequestTime != 0 &&
+                _solarEdgeOverview.RequestTime + 15000 > millis()) 
+            {
+                // return buffered result for 15 sec.
+                return _solarEdgeOverview;
+            }
+            _solarEdgeOverview.RequestTime = millis();
+
             String url = "https://monitoringapi.solaredge.com/site/";
             url.concat(SOLAREDGE_SITEID);
-            url.concat("/energy?timeUnit=DAY&endDate=");
-            url.concat("2021-03-02");
-            url.concat("&startDate=");
-            url.concat("2021-03-02");
-            url.concat("&api_key=");
+            url.concat("/overview?api_key=");
             url.concat(SOLAREDGE_APIKEY);
-            String result = GetData(url);
+       
+            DynamicJsonDocument doc(1024);
+            deserializeJson(doc, GetData(url));
+
+            _solarEdgeOverview.CurrentPower = doc["overview"]["CurrentPower"]["power"];
+            _solarEdgeOverview.LastDayDataEnergy = doc["overview"]["lastDayData"]["energy"];
+            return _solarEdgeOverview;
         }
 
         void GetDataPower(void)
@@ -168,5 +206,19 @@ class network {
             url.concat("%2021:00:00&api_key=");
             url.concat(SOLAREDGE_APIKEY);
             String result = GetData(url);        
+        }
+
+        struct tm Now(void)
+        {
+            struct tm timeinfo;
+            if(getLocalTime(&timeinfo))
+            {
+                Serial.print(asctime(&timeinfo));
+            }         
+            else
+            {
+                Serial.println("Failed to obtain time");
+            }
+            return timeinfo;   
         }
 };

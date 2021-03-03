@@ -16,3 +16,7 @@
 #ifndef SOLAREDGE_SITEID
 #define SOLAREDGE_SITEID 1
 #endif
+
+#ifndef TIMEZONE_OFFSET
+#define TIMEZONE_OFFSET 3600
+#endif

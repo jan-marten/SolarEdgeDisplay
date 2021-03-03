@@ -7,6 +7,7 @@ display _myDisplay = display();
 network _myNetwork = network();
 
 const int arraySize = 60;
+bool _displayToggle = false;
 
 void setup() {
     Serial.begin(115200);
@@ -17,18 +18,25 @@ void setup() {
     _myDisplay.Init();
 
     _myNetwork.Init();
-    //_myNetwork.GetData();
-    _myNetwork.GetDataPeriod();
-    _myNetwork.GetDataEnergy();
+
+    _myNetwork.GetDataOverview();
     _myNetwork.GetDataPower();
 }
 
-void loop() {
+void loop() 
+{
     Serial.println("SolarEdgeDisplay->loop()");
 
     char chartTitle[32];
-    sprintf_P(chartTitle, PSTR("T=%lu"), millis());
 
+    struct SolarEdgeOverview overview = _myNetwork.GetDataOverview();
+    if (_displayToggle)
+        sprintf_P(chartTitle, PSTR("P=%d"), overview.CurrentPower);
+    else
+        sprintf_P(chartTitle, PSTR("E=%d"), overview.LastDayDataEnergy);
+    _displayToggle = !_displayToggle;
+
+    // demo-chart
     byte myValues[arraySize];
     for (int i = 0; i < arraySize; i++)
     {
@@ -40,5 +48,5 @@ void loop() {
         else              myValues[i] = (byte)random(0, 10);        
     }
     _myDisplay.DrawChart(chartTitle, myValues);
-    delay(250);
+    delay(1000);
 }
