@@ -9,11 +9,12 @@ class display
         // Display-Height: 16 pixels geel, 48 pixels blauw
         // Display-Width: 128 pixels
         
-        const int marginLeft = 8; // space for tiny labels on the left
-        const int marginTop = 16; // top is yellow-header, rest is blue for charting
-        const int marginBottom = 8; // space for tiny labels at the bottom
-        const int width = 128 - marginLeft;
-        const int height =  64 - marginTop - marginBottom; // onderaan ruimte voor labels
+        const byte marginLeft = 8; // space for tiny labels on the left
+        const byte marginTop = 16; // top is yellow-header, rest is blue for charting
+        const byte marginBottom = 8; // space for tiny labels at the bottom
+        const byte width = 128 - marginLeft;
+        const byte height =  64 - marginTop - marginBottom; // onderaan ruimte voor labels
+        const byte dataPoints = 60;
 
     public:
 
@@ -30,27 +31,64 @@ class display
             _u8g2.begin();
         };
 
-        void DrawChart(char title[], byte values[])
+        void DrawChartAutoScaled(char title[], unsigned int values[])
         {
-            // draw the basics of the chart;
-            // int arraySize = sizeof(values);
-            // if (arraySize < 0) arraySize = 60;
-            // if (arraySize > 120) arraySize = 120;
-            int arraySize = 60;
+            byte scaledValues[dataPoints] = {};
+            byte scaleFactor = 100;
 
+            unsigned int maxValue = Max(values);
+            if (maxValue > 2000)
+                scaleFactor = 100;
+            else if (maxValue > 1000)
+                scaleFactor = 50;
+            else
+                scaleFactor = 25;
+
+            for(byte i = 0; i < dataPoints; i++)
+            {
+                scaledValues[i] = (byte)(values[i] / scaleFactor);
+            }
+            DrawChart(title, scaledValues, scaleFactor);
+        };
+
+        unsigned int Max(unsigned int values[])
+        {
+            unsigned int max = 0;
+            for (byte i = 0; i < dataPoints; i++)
+            {
+                if (values[i] > max) max = values[i];
+            }
+            return max;
+        }
+
+        void DrawChart(char title[], byte values[], byte scaleFactor)
+        {
             _u8g2.firstPage();  
             do 
             {
                 // display the title in the top;
-                _u8g2.setFont(u8g2_font_inr16_mr); // 16px height
+                _u8g2.setFont(u8g2_font_logisoso16_tr); 
                 _u8g2.drawStr(0, 16, title);
 
                 // draw values 0-4 on Y-axis (left-side)
                 _u8g2.setFont(u8g2_font_6x10_tn); // 8px, numeric only
-                _u8g2.setCursor(0, 64 - 8); _u8g2.print(0);
-                _u8g2.setCursor(0, 64 - (8 + 10)); _u8g2.print(1);
-                _u8g2.setCursor(0, 64 - (8 + 20)); _u8g2.print(2);
-                _u8g2.setCursor(0, 64 - (8 + 30)); _u8g2.print(3);
+                if (scaleFactor == 100)
+                {
+                    _u8g2.setCursor(0, 64 - 8); _u8g2.print(0);
+                    _u8g2.setCursor(0, 64 - (8 + 10)); _u8g2.print(1);
+                    _u8g2.setCursor(0, 64 - (8 + 20)); _u8g2.print(2);
+                    _u8g2.setCursor(0, 64 - (8 + 30)); _u8g2.print(3);
+                }
+                else if (scaleFactor == 50)
+                {
+                    _u8g2.setCursor(0, 64 - 8); _u8g2.print(0);
+                    _u8g2.setCursor(0, 64 - (8 + 20)); _u8g2.print(1);
+                }
+                else // factor 25
+                {
+                    _u8g2.setCursor(0, 64 - 8); _u8g2.print(0);
+                    _u8g2.setCursor(-3, 64 - (8 + 20)); _u8g2.print(".5");
+                }
                 
                 // draw time values on X-axis (bottom) //elke 3uur = 12kwartier = 24px
                 _u8g2.setCursor(8, 64); _u8g2.print(6);
@@ -64,12 +102,12 @@ class display
                 _u8g2.drawLine(marginLeft, marginTop + height, marginLeft + width, marginTop + height);
 
                 // plot the chart;
-                int prevPointX = marginLeft;
-                int prevPointY = marginTop + height;
-                for (int i = 0; i < arraySize; i++) 
+                byte prevPointX = marginLeft;
+                byte prevPointY = marginTop + height;
+                for (byte i = 0; i < dataPoints; i++) 
                 {
-                    int newPointX = (i * (width / arraySize)) + marginLeft;
-                    int newPointY = 64 - marginBottom - values[i];
+                    byte newPointX = (i * (width / dataPoints)) + marginLeft;
+                    byte newPointY = 64 - marginBottom - values[i];
                 
                     // draw a line from prevPoint to newPoint;
                     _u8g2.drawLine(prevPointX, prevPointY, newPointX, newPointY);

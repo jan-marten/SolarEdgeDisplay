@@ -5,18 +5,27 @@
 #include <WiFiClientSecure.h>
 #include "settings.h"
 #include <ArduinoJson.h>
+#include <time.h>
 
 struct SolarEdgeOverview
 {
     unsigned long RequestTime;
+    time_t LastUpdateTime;
     unsigned int LastDayDataEnergy;
     unsigned int CurrentPower;
+};
+
+struct SolarEdgePower
+{
+    unsigned long RequestTime;
+    unsigned int Values[60]{};
 };
 
 class network {
     private:
         WiFiMulti _WiFiMulti;
         SolarEdgeOverview _solarEdgeOverview;
+        SolarEdgePower _solarEdgePower;
 
         // SolarEdge uses the DigiCert Global Root CA
         // This is the BASE64-exported X.509 version
@@ -118,8 +127,32 @@ class network {
             return result;
         }
 
-    public:
+        struct tm Now(void)
+        {
+            struct tm timeinfo;
+            if(getLocalTime(&timeinfo))
+            {
+                Serial.print(asctime(&timeinfo));
+            }         
+            else
+            {
+                Serial.println("Failed to obtain time");
+            }
+            return timeinfo;   
+        }
 
+        time_t ParseDateTime(const char* jsonData)
+        {
+            struct tm tm;
+            memset(&tm, 0, sizeof(struct tm));
+            strptime(jsonData, "%Y-%m-%d %H:%M:%S", &tm);
+            
+            Serial.print("ParseDateTime:");
+            Serial.print(asctime(&tm));            
+            return mktime(&tm);
+        }
+
+    public:
         void Init(void)
         {
             Serial.print("Attempting to connect to SSID: ");
@@ -143,8 +176,11 @@ class network {
             SetClock();  
 
             _solarEdgeOverview.RequestTime = 0;
+            _solarEdgeOverview.LastUpdateTime = 0; // epoch
             _solarEdgeOverview.CurrentPower = 0;
             _solarEdgeOverview.LastDayDataEnergy = 0;
+            
+            _solarEdgePower.RequestTime = 0;
         };
 
         SolarEdgeOverview GetDataOverview(void)
@@ -173,10 +209,11 @@ class network {
             //     }
             // }
 
+            // Throttling is required, max 300 requests per day per SiteID
             if (_solarEdgeOverview.RequestTime != 0 &&
-                _solarEdgeOverview.RequestTime + 15000 > millis()) 
+                _solarEdgeOverview.RequestTime + (15 * 60 * 1000) > millis()) 
             {
-                // return buffered result for 15 sec.
+                // return buffered result for 15 minutes.
                 return _solarEdgeOverview;
             }
             _solarEdgeOverview.RequestTime = millis();
@@ -189,36 +226,60 @@ class network {
             DynamicJsonDocument doc(1024);
             deserializeJson(doc, GetData(url));
 
+            _solarEdgeOverview.LastUpdateTime = ParseDateTime(doc["overview"]["lastUpdateTime"]);
             _solarEdgeOverview.CurrentPower = doc["overview"]["CurrentPower"]["power"];
             _solarEdgeOverview.LastDayDataEnergy = doc["overview"]["lastDayData"]["energy"];
+
             return _solarEdgeOverview;
         }
 
-        void GetDataPower(void)
+        SolarEdgePower GetDataPower(void)
         {
-            // https://monitoringapi.solaredge.com/site/{{SITE_ID}}/power?startTime={{STATS_CURRENTDAY}} 05:00:00&endTime={{STATS_CURRENTDAY}} 21:00:00&api_key={{API_KEY}}
+            // https://monitoringapi.solaredge.com/site/{{SITE_ID}}/power?startTime={{STATS_CURRENTDAY}} 06:00:00&endTime={{STATS_CURRENTDAY}} 20:45:00&api_key={{API_KEY}}
+            // {
+            //     "power": {
+            //         "timeUnit": "QUARTER_OF_AN_HOUR",
+            //         "unit": "W",
+            //         "measuredBy": "INVERTER",
+            //         "values": [ 
+            //             {
+            //                 "date": "2021-03-04 06:00:00",
+            //                 "value": null
+            //             }, --> 06:00:00 - 20:45:00 = 60 datapoints
+
+
+            // Throttling is required, max 300 requests per day per SiteID
+            if (_solarEdgePower.RequestTime != 0 &&
+                _solarEdgePower.RequestTime + (15 * 60 * 1000) > millis()) 
+            {
+                // return buffered result for 15 sec.
+                return _solarEdgePower;
+            }
+            _solarEdgePower.RequestTime = millis();
+
+            struct tm now = Now();
+            char currentDate[11]; // last char is NULL terminator
+            strftime(currentDate, 11, "%Y-%m-%d", &now);
+
             String url = "https://monitoringapi.solaredge.com/site/";
             url.concat(SOLAREDGE_SITEID);
             url.concat("/power?startTime=");
-            url.concat("2021-03-02");
-            url.concat("%2005:00:00&endTime=");
-            url.concat("2021-03-02");
+            url.concat(currentDate);
+            url.concat("%2006:00:00&endTime=");
+            url.concat(currentDate);
             url.concat("%2021:00:00&api_key=");
             url.concat(SOLAREDGE_APIKEY);
-            String result = GetData(url);        
-        }
+            
+            DynamicJsonDocument doc(7000);
+            deserializeJson(doc, GetData(url));
 
-        struct tm Now(void)
-        {
-            struct tm timeinfo;
-            if(getLocalTime(&timeinfo))
+            byte index = 0;
+            JsonArray arr = doc["power"]["values"].as<JsonArray>();
+            for (JsonVariant value : arr)
             {
-                Serial.print(asctime(&timeinfo));
-            }         
-            else
-            {
-                Serial.println("Failed to obtain time");
+                _solarEdgePower.Values[index] = (unsigned int)(value["value"].as<float>());
+                index++;
             }
-            return timeinfo;   
+            return _solarEdgePower;
         }
 };
