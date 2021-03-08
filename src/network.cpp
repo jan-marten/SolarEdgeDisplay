@@ -227,7 +227,7 @@ class network {
             deserializeJson(doc, GetData(url));
 
             _solarEdgeOverview.LastUpdateTime = ParseDateTime(doc["overview"]["lastUpdateTime"]);
-            _solarEdgeOverview.CurrentPower = doc["overview"]["CurrentPower"]["power"];
+            _solarEdgeOverview.CurrentPower = doc["overview"]["currentPower"]["power"];
             _solarEdgeOverview.LastDayDataEnergy = doc["overview"]["lastDayData"]["energy"];
 
             return _solarEdgeOverview;
