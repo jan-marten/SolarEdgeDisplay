@@ -13,8 +13,6 @@ void setup() {
     Serial.begin(115200);
     Serial.println("SolarEdgeDisplay->setup()");
 
-    randomSeed(analogRead(3));
-
     _myDisplay.Init();
 
     _myNetwork.Init();
