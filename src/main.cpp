@@ -20,7 +20,7 @@ void setup() {
 
 void loop() 
 {
-    Serial.println("SolarEdgeDisplay->loop()");
+    // Serial.println("SolarEdgeDisplay->loop()");
 
     char chartTitle[32];
 

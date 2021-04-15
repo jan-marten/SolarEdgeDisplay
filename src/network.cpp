@@ -77,52 +77,74 @@ class network {
         String GetData(String url)
         {
             String result = "";
-            WiFiClientSecure *client = new WiFiClientSecure;
-            if (client) 
+
+            try
             {
-                client->setCACert(DigiCertRootCertificate);
+                if (_WiFiMulti.run() != WL_CONNECTED)
                 {
-                    // Add a scoping block for HTTPClient https to make sure it is destroyed before WiFiClientSecure *client is 
-                    HTTPClient https;
-
-                    Serial.print("[HTTPS] begin...\n");
-                    Serial.println(url);
-                    if (https.begin(*client, url))
-                    {  // HTTPS
-                        Serial.print("[HTTPS] GET...\n");
-                        // start connection and send HTTP header
-                        int httpCode = https.GET();
-
-                        // httpCode will be negative on error
-                        if (httpCode > 0)
+                    Serial.println("GetData:Not connected, going to Init now");
+                    Init();
+                }
+                else
+                {
+                    WiFiClientSecure *client = new WiFiClientSecure;
+                    if (client) 
+                    {
+                        client->setCACert(DigiCertRootCertificate);
                         {
-                            // HTTP header has been send and Server response header has been handled
-                            Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+                            // Add a scoping block for HTTPClient https to make sure it is destroyed before WiFiClientSecure *client is 
+                            HTTPClient https;
 
-                            // file found at server
-                            if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
+                            Serial.print("[HTTPS] begin...\n");
+                            Serial.println(url);
+                            if (https.begin(*client, url))
+                            {  // HTTPS
+                                Serial.print("[HTTPS] GET...\n");
+                                // start connection and send HTTP header
+                                int httpCode = https.GET();
+
+                                // httpCode will be negative on error
+                                if (httpCode > 0)
+                                {
+                                    // HTTP header has been send and Server response header has been handled
+                                    Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+
+                                    // file found at server
+                                    if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
+                                    {
+                                        result = https.getString();
+                                        Serial.println(result);
+                                    }
+                                    else 
+                                    {
+                                        Serial.println(https.getString());
+                                    }
+                                }
+                                else
+                                {
+                                    Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+                                }
+                                https.end();
+                            }
+                            else
                             {
-                                result = https.getString();
-                                Serial.println(result);
+                                Serial.printf("[HTTPS] Unable to connect\n");
                             }
                         }
-                        else
-                        {
-                            Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
-                        }
-                        https.end();
+
+                        delete client;
                     }
                     else
                     {
-                        Serial.printf("[HTTPS] Unable to connect\n");
+                        Serial.println("Unable to create client");
                     }
+                    
                 }
-
-                delete client;
             }
-            else
+            catch(const std::exception& e)
             {
-                Serial.println("Unable to create client");
+                Serial.println("Exception:");
+                Serial.println(e.what());
             }
             return result;
         }
@@ -223,12 +245,20 @@ class network {
             url.concat("/overview?api_key=");
             url.concat(SOLAREDGE_APIKEY);
        
-            DynamicJsonDocument doc(1024);
-            deserializeJson(doc, GetData(url));
+            String result = GetData(url);
+            if (result.length() > 0)
+            {
+                DynamicJsonDocument doc(1024);
+                deserializeJson(doc, result);
 
-            _solarEdgeOverview.LastUpdateTime = ParseDateTime(doc["overview"]["lastUpdateTime"]);
-            _solarEdgeOverview.CurrentPower = doc["overview"]["currentPower"]["power"];
-            _solarEdgeOverview.LastDayDataEnergy = doc["overview"]["lastDayData"]["energy"];
+                _solarEdgeOverview.LastUpdateTime = ParseDateTime(doc["overview"]["lastUpdateTime"]);
+                _solarEdgeOverview.CurrentPower = doc["overview"]["currentPower"]["power"];
+                _solarEdgeOverview.LastDayDataEnergy = doc["overview"]["lastDayData"]["energy"];
+            }
+            else 
+            {
+                Serial.println("Invalid JSON data, using buffered result");
+            }
 
             return _solarEdgeOverview;
         }
@@ -258,7 +288,7 @@ class network {
             _solarEdgePower.RequestTime = millis();
 
             struct tm now = Now();
-            char currentDate[11]; // last char is NULL terminator
+            char currentDate[11]; // last char is NULL terminator; "YYYY-MM-DD\0"
             strftime(currentDate, 11, "%Y-%m-%d", &now);
 
             String url = "https://monitoringapi.solaredge.com/site/";
@@ -270,15 +300,23 @@ class network {
             url.concat("%2021:00:00&api_key=");
             url.concat(SOLAREDGE_APIKEY);
             
-            DynamicJsonDocument doc(7000);
-            deserializeJson(doc, GetData(url));
+            String result = GetData(url);
+            if (result.length() > 0)
+            {            
+                DynamicJsonDocument doc(7000);
+                deserializeJson(doc, result);
 
-            byte index = 0;
-            JsonArray arr = doc["power"]["values"].as<JsonArray>();
-            for (JsonVariant value : arr)
+                byte index = 0;
+                JsonArray arr = doc["power"]["values"].as<JsonArray>();
+                for (JsonVariant value : arr)
+                {
+                    _solarEdgePower.Values[index] = (unsigned int)(value["value"].as<float>());
+                    index++;
+                }
+            }
+            else 
             {
-                _solarEdgePower.Values[index] = (unsigned int)(value["value"].as<float>());
-                index++;
+                Serial.println("Invalid JSON data, using buffered result");
             }
             return _solarEdgePower;
         }
