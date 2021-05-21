@@ -1,3 +1,4 @@
+#include "esp_log.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiMulti.h>
@@ -76,6 +77,7 @@ class network {
 
         String GetData(String url)
         {
+            esp_log_level_set("*", ESP_LOG_VERBOSE);
             String result = "";
 
             try
@@ -177,6 +179,10 @@ class network {
     public:
         void Init(void)
         {
+            esp_log_level_set("*", ESP_LOG_VERBOSE);
+            //esp_log_level_set("wifi", ESP_LOG_WARN);      // enable WARN logs from WiFi stack
+            //esp_log_level_set("dhcpc", ESP_LOG_INFO);     // enable INFO logs from DHCP client
+
             Serial.print("Attempting to connect to SSID: ");
             Serial.println(WIFI_SSID);
             WiFi.mode(WIFI_STA);
@@ -194,6 +200,8 @@ class network {
             Serial.println(WIFI_SSID);
             Serial.println("IP address: ");
             Serial.println(WiFi.localIP()); 
+            Serial.println("DNS:");
+            Serial.println(WiFi.dnsIP());
 
             SetClock();  
 
