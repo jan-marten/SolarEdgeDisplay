@@ -1,7 +1,6 @@
 #include "esp_log.h"
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiMulti.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include "settings.h"
@@ -24,7 +23,6 @@ struct SolarEdgePower
 
 class network {
     private:
-        WiFiMulti _WiFiMulti;
         SolarEdgeOverview _solarEdgeOverview;
         SolarEdgePower _solarEdgePower;
 
@@ -54,6 +52,8 @@ class network {
             "CAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=\n"\
             "-----END CERTIFICATE-----\n";
 
+        
+
         // Not sure if WiFiClientSecure checks the validity date of the certificate. 
         // Setting clock just to be sure...
         void SetClock() {
@@ -82,7 +82,7 @@ class network {
 
             try
             {
-                if (_WiFiMulti.run() != WL_CONNECTED)
+                if (WiFi.status() != WL_CONNECTED)
                 {
                     Serial.println("GetData:Not connected, going to Init now");
                     Init();
@@ -176,32 +176,48 @@ class network {
             return mktime(&tm);
         }
 
+        static void WiFi_Connected(WiFiEvent_t event, WiFiEventInfo_t info)
+        {
+            Serial.println("Connected to AP successfully!");
+        }
+
+        static void WiFi_GotIP(WiFiEvent_t event, WiFiEventInfo_t info)
+        {
+            Serial.print("WiFi connected with IP:");
+            Serial.println(WiFi.localIP());
+        }
+
+        static void WiFi_Disconnected(WiFiEvent_t event, WiFiEventInfo_t info)
+        {
+            Serial.print("Disconnected from WiFi access point, reason:");
+            Serial.println(info.disconnected.reason);
+        }
+
     public:
-        void Init(void)
+        network()
         {
             esp_log_level_set("*", ESP_LOG_VERBOSE);
             //esp_log_level_set("wifi", ESP_LOG_WARN);      // enable WARN logs from WiFi stack
             //esp_log_level_set("dhcpc", ESP_LOG_INFO);     // enable INFO logs from DHCP client
 
-            Serial.print("Attempting to connect to SSID: ");
-            Serial.println(WIFI_SSID);
+            WiFi.onEvent(WiFi_Connected, SYSTEM_EVENT_STA_CONNECTED);
+            WiFi.onEvent(WiFi_GotIP, SYSTEM_EVENT_STA_GOT_IP);
+            WiFi.onEvent(WiFi_Disconnected, SYSTEM_EVENT_STA_DISCONNECTED);
+        }
+
+        void Init(void)
+        {
+            WiFi.disconnect(true);
             WiFi.mode(WIFI_STA);
-            _WiFiMulti.addAP(WIFI_SSID, WIFI_PWD);
+            WiFi.begin(WIFI_SSID, WIFI_PWD);
 
             // attempt to connect to Wifi network:
-            while ((_WiFiMulti.run() != WL_CONNECTED)) 
+            while ((WiFi.status() != WL_CONNECTED)) 
             {
                 Serial.print(".");
                 // wait 1 second for re-trying
                 delay(50);
             }
-
-            Serial.print("\nConnected to ");
-            Serial.println(WIFI_SSID);
-            Serial.println("IP address: ");
-            Serial.println(WiFi.localIP()); 
-            Serial.println("DNS:");
-            Serial.println(WiFi.dnsIP());
 
             SetClock();  
 
