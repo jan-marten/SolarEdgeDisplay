@@ -1,3 +1,4 @@
+#include "esp_log.h"
 #include "settings.h"
 #include <Arduino.h>
 #include "display.cpp"
@@ -11,7 +12,14 @@ bool _displayToggle = false;
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("SolarEdgeDisplay->setup()");
+
+    esp_log_level_set("*", ESP_LOG_INFO);
+    esp_log_level_set("wifi", ESP_LOG_DEBUG);      // enable WARN logs from WiFi stack
+    esp_log_level_set("dhcpc", ESP_LOG_INFO);     // enable INFO logs from DHCP client
+    esp_log_level_set("network", ESP_LOG_VERBOSE); 
+    esp_log_level_set("display", ESP_LOG_INFO); 
+
+    log_d("SolarEdgeDisplay setup");
 
     _myDisplay.Init();
 
