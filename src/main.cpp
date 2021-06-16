@@ -1,3 +1,4 @@
+#include "esp_log.h"
 #include "settings.h"
 #include <Arduino.h>
 #include "display.cpp"
@@ -11,7 +12,8 @@ bool _displayToggle = false;
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("SolarEdgeDisplay->setup()");
+
+    log_d("SolarEdgeDisplay setup");
 
     _myDisplay.Init();
 

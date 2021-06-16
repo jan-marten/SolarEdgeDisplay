@@ -1,6 +1,6 @@
+#include "esp_log.h"
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiMulti.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include "settings.h"
@@ -23,7 +23,7 @@ struct SolarEdgePower
 
 class network {
     private:
-        WiFiMulti _WiFiMulti;
+    
         SolarEdgeOverview _solarEdgeOverview;
         SolarEdgePower _solarEdgePower;
 
@@ -58,20 +58,18 @@ class network {
         void SetClock() {
             configTime(TIMEZONE_OFFSET, 0, "pool.ntp.org", "time.nist.gov");
 
-            Serial.print(F("Waiting for NTP time sync: "));
+            log_d("Waiting for NTP time sync");
             time_t nowSecs = time(nullptr);
             while (nowSecs < 8 * 3600 * 2) {
-                delay(500);
-                Serial.print(F("."));
+                delay(1000);
+                log_v("Waiting for NTP sync");
                 yield();
                 nowSecs = time(nullptr);
             }
 
-            Serial.println();
             struct tm timeinfo;
             gmtime_r(&nowSecs, &timeinfo);
-            Serial.print(F("Current time: "));
-            Serial.print(asctime(&timeinfo));
+            log_i("Result: %s", asctime(&timeinfo));
         }
 
         String GetData(String url)
@@ -80,9 +78,9 @@ class network {
 
             try
             {
-                if (_WiFiMulti.run() != WL_CONNECTED)
+                if (WiFi.status() != WL_CONNECTED)
                 {
-                    Serial.println("GetData:Not connected, going to Init now");
+                    log_i("Not connected, going to Init now");
                     Init();
                 }
                 else
@@ -95,11 +93,11 @@ class network {
                             // Add a scoping block for HTTPClient https to make sure it is destroyed before WiFiClientSecure *client is 
                             HTTPClient https;
 
-                            Serial.print("[HTTPS] begin...\n");
-                            Serial.println(url);
+                            log_d("Begin: %s", url.c_str());
+                            //log_d(url);
                             if (https.begin(*client, url))
                             {  // HTTPS
-                                Serial.print("[HTTPS] GET...\n");
+                                log_d("GET...");
                                 // start connection and send HTTP header
                                 int httpCode = https.GET();
 
@@ -107,28 +105,28 @@ class network {
                                 if (httpCode > 0)
                                 {
                                     // HTTP header has been send and Server response header has been handled
-                                    Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+                                    log_d("httpCode: %d", httpCode);
 
                                     // file found at server
                                     if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
                                     {
                                         result = https.getString();
-                                        Serial.println(result);
+                                        log_d("Result: %s", result.c_str());
                                     }
                                     else 
                                     {
-                                        Serial.println(https.getString());
+                                        log_w("Invalid result: %s", https.getString().c_str());
                                     }
                                 }
                                 else
                                 {
-                                    Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+                                    log_w("Failed, error: %s", https.errorToString(httpCode).c_str());
                                 }
                                 https.end();
                             }
                             else
                             {
-                                Serial.printf("[HTTPS] Unable to connect\n");
+                                log_w("Unable to connect");
                             }
                         }
 
@@ -136,15 +134,14 @@ class network {
                     }
                     else
                     {
-                        Serial.println("Unable to create client");
+                        log_w("Unable to create client");
                     }
                     
                 }
             }
             catch(const std::exception& e)
             {
-                Serial.println("Exception:");
-                Serial.println(e.what());
+                log_e("Exception: %s", e.what());
             }
             return result;
         }
@@ -152,13 +149,9 @@ class network {
         struct tm Now(void)
         {
             struct tm timeinfo;
-            if(getLocalTime(&timeinfo))
+            if(!getLocalTime(&timeinfo))
             {
-                Serial.print(asctime(&timeinfo));
-            }         
-            else
-            {
-                Serial.println("Failed to obtain time");
+                log_w("Failed to obtain time");
             }
             return timeinfo;   
         }
@@ -169,31 +162,93 @@ class network {
             memset(&tm, 0, sizeof(struct tm));
             strptime(jsonData, "%Y-%m-%d %H:%M:%S", &tm);
             
-            Serial.print("ParseDateTime:");
-            Serial.print(asctime(&tm));            
             return mktime(&tm);
         }
 
+        static void WiFi_Connected(WiFiEvent_t event, WiFiEventInfo_t info)
+        {
+            log_i("Connected to AP successfully!");
+        }
+
+        static void WiFi_GotIP(WiFiEvent_t event, WiFiEventInfo_t info)
+        {
+            log_i("Connected with IP: %s", WiFi.localIP().toString().c_str());
+        }
+
+        static void WiFi_Disconnected(WiFiEvent_t event, WiFiEventInfo_t info)
+        {
+            log_w("Disconnected from WiFi access point, reason:");
+            switch(info.disconnected.reason)
+            {
+                case WIFI_REASON_UNSPECIFIED : log_w("WIFI_REASON_UNSPECIFIED "); break; // = 1,
+                case WIFI_REASON_AUTH_EXPIRE : log_w("WIFI_REASON_AUTH_EXPIRE "); break; // = 2,
+                case WIFI_REASON_AUTH_LEAVE : log_w("WIFI_REASON_AUTH_LEAVE "); break; // = 3,
+                case WIFI_REASON_ASSOC_EXPIRE : log_w("WIFI_REASON_ASSOC_EXPIRE "); break; // = 4,
+                case WIFI_REASON_ASSOC_TOOMANY : log_w("WIFI_REASON_ASSOC_TOOMANY "); break; // = 5,
+                case WIFI_REASON_NOT_AUTHED : log_w("WIFI_REASON_NOT_AUTHED "); break; // = 6,
+                case WIFI_REASON_NOT_ASSOCED : log_w("WIFI_REASON_NOT_ASSOCED "); break; // = 7,
+                case WIFI_REASON_ASSOC_LEAVE : log_w("WIFI_REASON_ASSOC_LEAVE "); break; // = 8,
+                case WIFI_REASON_ASSOC_NOT_AUTHED : log_w("WIFI_REASON_ASSOC_NOT_AUTHED "); break; // = 9,
+                case WIFI_REASON_DISASSOC_PWRCAP_BAD : log_w("WIFI_REASON_DISASSOC_PWRCAP_BAD "); break; // = 10,
+                case WIFI_REASON_DISASSOC_SUPCHAN_BAD : log_w("WIFI_REASON_DISASSOC_SUPCHAN_BAD "); break; // = 11,
+                case WIFI_REASON_IE_INVALID : log_w("WIFI_REASON_IE_INVALID "); break; // = 13,
+                case WIFI_REASON_MIC_FAILURE : log_w("WIFI_REASON_MIC_FAILURE "); break; // = 14,
+                case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT : log_w("WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT "); break; // = 15,
+                case WIFI_REASON_GROUP_KEY_UPDATE_TIMEOUT : log_w("WIFI_REASON_GROUP_KEY_UPDATE_TIMEOUT "); break; // = 16,
+                case WIFI_REASON_IE_IN_4WAY_DIFFERS : log_w("WIFI_REASON_IE_IN_4WAY_DIFFERS "); break; // = 17,
+                case WIFI_REASON_GROUP_CIPHER_INVALID : log_w("WIFI_REASON_GROUP_CIPHER_INVALID "); break; // = 18,
+                case WIFI_REASON_PAIRWISE_CIPHER_INVALID : log_w("WIFI_REASON_PAIRWISE_CIPHER_INVALID "); break; // = 19,
+                case WIFI_REASON_AKMP_INVALID : log_w("WIFI_REASON_AKMP_INVALID "); break; // = 20,
+                case WIFI_REASON_UNSUPP_RSN_IE_VERSION : log_w("WIFI_REASON_UNSUPP_RSN_IE_VERSION "); break; // = 21,
+                case WIFI_REASON_INVALID_RSN_IE_CAP : log_w("WIFI_REASON_INVALID_RSN_IE_CAP "); break; // = 22,
+                case WIFI_REASON_802_1X_AUTH_FAILED : log_w("WIFI_REASON_802_1X_AUTH_FAILED "); break; // = 23,
+                case WIFI_REASON_CIPHER_SUITE_REJECTED : log_w("WIFI_REASON_CIPHER_SUITE_REJECTED "); break; // = 24,
+                case WIFI_REASON_BEACON_TIMEOUT : log_w("WIFI_REASON_BEACON_TIMEOUT "); break; // = 200,
+                case WIFI_REASON_NO_AP_FOUND : log_w("WIFI_REASON_NO_AP_FOUND "); break; // = 201,
+                case WIFI_REASON_AUTH_FAIL : log_w("WIFI_REASON_AUTH_FAIL "); break; // = 202,
+                case WIFI_REASON_ASSOC_FAIL : log_w("WIFI_REASON_ASSOC_FAIL "); break; // = 203,
+                case WIFI_REASON_HANDSHAKE_TIMEOUT : log_w("WIFI_REASON_HANDSHAKE_TIMEOUT "); break; // = 204,
+                case WIFI_REASON_CONNECTION_FAIL : log_w("WIFI_REASON_CONNECTION_FAIL "); break; // = 205,
+                case WIFI_REASON_AP_TSF_RESET : log_w("WIFI_REASON_AP_TSF_RESET "); break; // = 206,
+                default: log_w("WIFI - unknown disconnected reason "); break;
+            }            
+        }
+
     public:
+        network()
+        {
+            WiFi.onEvent(WiFi_Connected, SYSTEM_EVENT_STA_CONNECTED);
+            WiFi.onEvent(WiFi_GotIP, SYSTEM_EVENT_STA_GOT_IP);
+            WiFi.onEvent(WiFi_Disconnected, SYSTEM_EVENT_STA_DISCONNECTED);
+        }
+
         void Init(void)
         {
-            Serial.print("Attempting to connect to SSID: ");
-            Serial.println(WIFI_SSID);
+            log_i("Init begin...");
+            unsigned long startConnectTime;
+
+            WiFi.disconnect(true);
             WiFi.mode(WIFI_STA);
-            _WiFiMulti.addAP(WIFI_SSID, WIFI_PWD);
 
-            // attempt to connect to Wifi network:
-            while ((_WiFiMulti.run() != WL_CONNECTED)) 
+            startConnectTime = millis();
+            WiFi.begin(WIFI_SSID, WIFI_PWD);
+
+            wl_status_t wifiStatus = WiFi.status();
+            while (wifiStatus != WL_CONNECTED) 
             {
-                Serial.print(".");
-                // wait 1 second for re-trying
-                delay(50);
-            }
+                log_v("Status:%d", wifiStatus);
 
-            Serial.print("\nConnected to ");
-            Serial.println(WIFI_SSID);
-            Serial.println("IP address: ");
-            Serial.println(WiFi.localIP()); 
+                delay(100);
+                wifiStatus = WiFi.status();
+
+                if (wifiStatus != WL_CONNECTED && startConnectTime + 15000 < millis())
+                {
+                    log_w("Retry WiFi connection");
+                    startConnectTime = millis();
+                    WiFi.begin(WIFI_SSID, WIFI_PWD);                    
+                    wifiStatus = WiFi.status();
+                }
+            }
 
             SetClock();  
 
@@ -257,7 +312,7 @@ class network {
             }
             else 
             {
-                Serial.println("Invalid JSON data, using buffered result");
+                log_w("Invalid JSON data, using buffered result");
             }
 
             return _solarEdgeOverview;
@@ -316,7 +371,7 @@ class network {
             }
             else 
             {
-                Serial.println("Invalid JSON data, using buffered result");
+                log_w("Invalid JSON data, using buffered result");
             }
             return _solarEdgePower;
         }
