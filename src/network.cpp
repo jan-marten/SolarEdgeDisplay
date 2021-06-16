@@ -7,6 +7,13 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
+struct WifiStatus
+{
+    wl_status_t Status;
+    tm LastUpdate;
+    int8_t RSSI;
+};
+
 struct SolarEdgeOverview
 {
     unsigned long RequestTime;
@@ -26,6 +33,7 @@ class network {
     
         SolarEdgeOverview _solarEdgeOverview;
         SolarEdgePower _solarEdgePower;
+        WifiStatus _lastStatus;
 
         // SolarEdge uses the DigiCert Global Root CA
         // This is the BASE64-exported X.509 version
@@ -78,7 +86,7 @@ class network {
 
             try
             {
-                if (WiFi.status() != WL_CONNECTED)
+                if (GetWifiStatus().Status != WL_CONNECTED)
                 {
                     log_i("Not connected, going to Init now");
                     Init();
@@ -214,6 +222,13 @@ class network {
             }            
         }
 
+        void SetWifiStatus()
+        {
+            _lastStatus.LastUpdate = Now();
+            _lastStatus.Status = WiFi.status();
+            _lastStatus.RSSI = (_lastStatus.Status == WL_CONNECTED) ? WiFi.RSSI() : 0;
+        }
+
     public:
         network()
         {
@@ -222,8 +237,17 @@ class network {
             WiFi.onEvent(WiFi_Disconnected, SYSTEM_EVENT_STA_DISCONNECTED);
         }
 
+        WifiStatus GetWifiStatus(bool setStatus = false)
+        {
+            if (setStatus) SetWifiStatus();
+            return _lastStatus;
+        }
+
         void Init(void)
         {
+            if (GetWifiStatus().Status == WL_CONNECTED) // already connected, dismiss call
+                return;
+
             log_i("Init begin...");
             unsigned long startConnectTime;
 
@@ -233,20 +257,20 @@ class network {
             startConnectTime = millis();
             WiFi.begin(WIFI_SSID, WIFI_PWD);
 
-            wl_status_t wifiStatus = WiFi.status();
-            while (wifiStatus != WL_CONNECTED) 
+            SetWifiStatus();
+            while (GetWifiStatus().Status != WL_CONNECTED) 
             {
                 log_v("Status:%d", wifiStatus);
 
                 delay(100);
-                wifiStatus = WiFi.status();
+                SetWifiStatus();
 
-                if (wifiStatus != WL_CONNECTED && startConnectTime + 15000 < millis())
+                if (GetWifiStatus().Status != WL_CONNECTED && startConnectTime + 15000 < millis())
                 {
                     log_w("Retry WiFi connection");
                     startConnectTime = millis();
                     WiFi.begin(WIFI_SSID, WIFI_PWD);                    
-                    wifiStatus = WiFi.status();
+                    SetWifiStatus();
                 }
             }
 
@@ -260,7 +284,7 @@ class network {
             _solarEdgePower.RequestTime = 0;
         };
 
-        SolarEdgeOverview GetDataOverview(void)
+        void RetrieveDataOverview(void)
         {
             //https://monitoringapi.solaredge.com/site/{{SITE_ID}}/overview?api_key={{API_KEY}}
             // {
@@ -291,7 +315,7 @@ class network {
                 _solarEdgeOverview.RequestTime + (15 * 60 * 1000) > millis()) 
             {
                 // return buffered result for 15 minutes.
-                return _solarEdgeOverview;
+                return;
             }
             _solarEdgeOverview.RequestTime = millis();
 
@@ -314,11 +338,15 @@ class network {
             {
                 log_w("Invalid JSON data, using buffered result");
             }
+        }
 
+        SolarEdgeOverview GetDataOverview(void)
+        {
             return _solarEdgeOverview;
         }
 
-        SolarEdgePower GetDataPower(void)
+
+        void RetrieveDataPower(void)
         {
             // https://monitoringapi.solaredge.com/site/{{SITE_ID}}/power?startTime={{STATS_CURRENTDAY}} 06:00:00&endTime={{STATS_CURRENTDAY}} 20:45:00&api_key={{API_KEY}}
             // {
@@ -338,7 +366,7 @@ class network {
                 _solarEdgePower.RequestTime + (15 * 60 * 1000) > millis()) 
             {
                 // return buffered result for 15 sec.
-                return _solarEdgePower;
+                return;
             }
             _solarEdgePower.RequestTime = millis();
 
@@ -373,6 +401,10 @@ class network {
             {
                 log_w("Invalid JSON data, using buffered result");
             }
-            return _solarEdgePower;
         }
+
+        SolarEdgePower GetDataPower(void)
+        {
+            return _solarEdgePower;
+         }
 };
