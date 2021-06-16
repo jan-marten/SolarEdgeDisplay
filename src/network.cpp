@@ -241,7 +241,7 @@ class network {
                 delay(100);
                 wifiStatus = WiFi.status();
 
-                if (wifiStatus == WL_DISCONNECTED && startConnectTime + 15000 < millis())
+                if (wifiStatus != WL_CONNECTED && startConnectTime + 15000 < millis())
                 {
                     log_w("Retry WiFi connection");
                     startConnectTime = millis();
